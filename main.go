@@ -31,22 +31,6 @@ type Pet struct {
 // Estilo 8-bit (Pixel Art com Blocos do Terminal)
 var pets = []Pet{
 	{
-		name:  "Cachorro",
-		color: "#E8A317", // Laranja/Dourado
-		frames: []Frame{
-			{art: "  ▄▀▀▀▄  \n ▄█ ▄ █▄ \n ▀█▄▄▄█▀ \n  ▀   ▀  "},
-			{art: "  ▄▀▀▀▄  \n ▄█ ▄ █▄ \n ▀█▄▄▄█▀ \n  ▄   ▄  "},
-		},
-	},
-	{
-		name:  "Gato",
-		color: "#00FFFF", // Ciano
-		frames: []Frame{
-			{art: " █▀▀▀▀▀█ \n █ ▄ ▄ █ \n ▀▄▄▄▄▄▀ \n  ▀   ▀  "},
-			{art: " █▀▀▀▀▀█ \n █ ▀ ▀ █ \n ▀▄▄▄▄▄▀ \n  ▄   ▄  "},
-		},
-	},
-	{
 		name:  "Panda",
 		color: "#FFFFFF", // Branco
 		frames: []Frame{
@@ -67,7 +51,7 @@ func loadConfig() Config {
 	if err != nil {
 		return Config{
 			KeyBinds: "normal",
-			Pet:      "Gato",
+			Pet:      "Panda",
 			Theme:    "dark",
 		}
 	}
@@ -75,7 +59,7 @@ func loadConfig() Config {
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return Config{
 			KeyBinds: "normal",
-			Pet:      "Gato",
+			Pet:      "Panda",
 			Theme:    "dark",
 		}
 	}
@@ -318,28 +302,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					saveTodos(m.todos)
 				}
 			}
-		case "left", "h":
-			if !m.typing {
-				m.petIndex--
-				if m.petIndex < 0 {
-					m.petIndex = len(pets) - 1
-				}
-				m.frameIndex = 0
-				cfg := loadConfig()
-				cfg.Pet = pets[m.petIndex].name
-				saveConfig(cfg)
-			}
-		case "right", "l":
-			if !m.typing {
-				m.petIndex++
-				if m.petIndex >= len(pets) {
-					m.petIndex = 0
-				}
-				m.frameIndex = 0
-				cfg := loadConfig()
-				cfg.Pet = pets[m.petIndex].name
-				saveConfig(cfg)
-			}
 		case "esc":
 			if m.typing {
 				m.typing = false
@@ -447,8 +409,6 @@ func (m model) View() string {
 		currentPet := pets[m.petIndex]
 		frame := currentPet.frames[m.frameIndex]
 
-		bottom.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#EE6FF8")).Render("❮ "+currentPet.name+" ❯") + "\n")
-
 		// Prepara a animação e o espaçamento para o walk-cycle
 		petStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(currentPet.color)).Bold(true)
 		lines := strings.Split(frame.art, "\n")
@@ -476,7 +436,7 @@ func (m model) View() string {
 	if m.typing {
 		bottom.WriteString(helpStyle.Render("enter: confirmar • esc: cancelar"))
 	} else {
-		bottom.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: nova • s: sub-tarefa • d: apagar\n←/→: trocar pet • q: sair"))
+		bottom.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: nova • s: sub-tarefa • d: apagar\nq: sair"))
 	}
 
 	topStr := top.String()

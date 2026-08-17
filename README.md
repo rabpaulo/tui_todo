@@ -5,7 +5,7 @@ A beautiful, retro-styled Terminal User Interface (TUI) Todo List application bu
 ## Features
 
 - **Hierarchical Tasks**: Organize your tasks with sub-tasks.
-- **Animated 8-Bit Pets**: Cute pixel art companion walking above the floor bar (Dog, Cat, Panda).
+- **Animated 8-Bit Panda**: Cute pixel art companion walking above the bottom floor bar.
 - **Interactive UI**: Navigate easily with keyboard shortcuts.
 - **Beautiful Styling**: Custom colors and text formatting using Lipgloss.
 - **Retro Aesthetic**: Includes a stylized floor bar at the bottom.
@@ -20,7 +20,7 @@ Alternatively, you can run it using [Docker](https://docs.docker.com/get-docker/
 ## How it Works
 
 The application uses the Bubble Tea architecture (Model, Update, View):
-- **Model**: Stores the state of your todos, cursor position, selected pet, and input fields.
+- **Model**: Stores the state of your todos, cursor position, animated pet state, and input fields.
 - **Update**: Handles keyboard events, timer ticks for pet animation, and updates state.
 - **View**: Renders the current state to the terminal using beautiful ANSI styling provided by Lipgloss.
 
@@ -64,8 +64,6 @@ The application is fully controllable via the keyboard:
 | `a` | Add a new task |
 | `s` | Add a new sub-task to the currently selected task |
 | `d` | Delete the currently selected task or sub-task |
-| `←` or `h` | Switch pet (previous) |
-| `→` or `l` | Switch pet (next) |
 | `esc` | Cancel typing |
 | `q` | Quit the application (when not typing) |
 | `ctrl+c` | Force quit |

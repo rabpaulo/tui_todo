@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,6 +16,77 @@ type Todo struct {
 	Text     string  `json:"text"`
 	Done     bool    `json:"done"`
 	Subtasks []*Todo `json:"subtasks"`
+}
+
+type Frame struct {
+	art string
+}
+
+type Pet struct {
+	name   string
+	frames []Frame
+	color  string
+}
+
+// Estilo 8-bit (Pixel Art com Blocos do Terminal)
+var pets = []Pet{
+	{
+		name:  "Cachorro",
+		color: "#E8A317", // Laranja/Dourado
+		frames: []Frame{
+			{art: "  ▄▀▀▀▄  \n ▄█ ▄ █▄ \n ▀█▄▄▄█▀ \n  ▀   ▀  "},
+			{art: "  ▄▀▀▀▄  \n ▄█ ▄ █▄ \n ▀█▄▄▄█▀ \n  ▄   ▄  "},
+		},
+	},
+	{
+		name:  "Gato",
+		color: "#00FFFF", // Ciano
+		frames: []Frame{
+			{art: " █▀▀▀▀▀█ \n █ ▄ ▄ █ \n ▀▄▄▄▄▄▀ \n  ▀   ▀  "},
+			{art: " █▀▀▀▀▀█ \n █ ▀ ▀ █ \n ▀▄▄▄▄▄▀ \n  ▄   ▄  "},
+		},
+	},
+	{
+		name:  "Panda",
+		color: "#FFFFFF", // Branco
+		frames: []Frame{
+			{art: " ▄▀▀▀▀▀▄ \n █ █ █ █ \n ▀▄▄▄▄▄▀ \n  ▀   ▀  "},
+			{art: " ▄▀▀▀▀▀▄ \n █ █ █ █ \n ▀▄▄▄▄▄▀ \n  ▄   ▄  "},
+		},
+	},
+}
+
+type Config struct {
+	KeyBinds string `json:"key_binds"`
+	Pet      string `json:"pet"`
+	Theme    string `json:"theme"`
+}
+
+func loadConfig() Config {
+	b, err := os.ReadFile("config.json")
+	if err != nil {
+		return Config{
+			KeyBinds: "normal",
+			Pet:      "Gato",
+			Theme:    "dark",
+		}
+	}
+	var cfg Config
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		return Config{
+			KeyBinds: "normal",
+			Pet:      "Gato",
+			Theme:    "dark",
+		}
+	}
+	return cfg
+}
+
+func saveConfig(cfg Config) {
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err == nil {
+		os.WriteFile("config.json", b, 0644)
+	}
 }
 
 func loadTodos() []*Todo {
@@ -73,10 +145,22 @@ func getVisible(todos []*Todo) []VisibleTodo {
 type model struct {
 	todos         []*Todo
 	cursor        int
+	petIndex      int
+	frameIndex    int
+	position      int
+	direction     int
 	textInput     textinput.Model
 	typing        bool
 	addingSubtask bool
 	width         int
+}
+
+type tickMsg time.Time
+
+func tick() tea.Cmd {
+	return tea.Tick(time.Millisecond*250, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }
 
 func initialModel() model {
@@ -86,9 +170,22 @@ func initialModel() model {
 	ti.CharLimit = 156
 	ti.Width = 40
 
+	cfg := loadConfig()
+	petIdx := 0
+	for i, p := range pets {
+		if strings.EqualFold(p.name, cfg.Pet) {
+			petIdx = i
+			break
+		}
+	}
+
 	return model{
 		todos:         loadTodos(),
 		cursor:        0,
+		petIndex:      petIdx,
+		frameIndex:    0,
+		position:      0,
+		direction:     1,
 		textInput:     ti,
 		typing:        false,
 		addingSubtask: false,
@@ -97,7 +194,7 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, tick())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -110,6 +207,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.width < 40 {
 			m.width = 40
 		}
+	case tickMsg:
+		// Anima os frames do pet
+		if len(pets) > 0 && len(pets[m.petIndex].frames) > 0 {
+			m.frameIndex = (m.frameIndex + 1) % len(pets[m.petIndex].frames)
+		}
+
+		// Move o pet ao longo da tela
+		m.position += m.direction * 2
+
+		maxPos := m.width - 15
+		if maxPos < 0 {
+			maxPos = 0
+		}
+
+		// Bate nas bordas e vira
+		if m.position >= maxPos { // Limite direito
+			m.position = maxPos
+			m.direction = -1
+		} else if m.position <= 0 { // Limite esquerdo
+			m.position = 0
+			m.direction = 1
+		}
+
+		cmds = append(cmds, tick())
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -186,9 +308,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					saveTodos(m.todos)
 				}
 			}
+		case "left", "h":
+			if !m.typing {
+				m.petIndex--
+				if m.petIndex < 0 {
+					m.petIndex = len(pets) - 1
+				}
+				m.frameIndex = 0
+				cfg := loadConfig()
+				cfg.Pet = pets[m.petIndex].name
+				saveConfig(cfg)
+			}
+		case "right", "l":
+			if !m.typing {
+				m.petIndex++
+				if m.petIndex >= len(pets) {
+					m.petIndex = 0
+				}
+				m.frameIndex = 0
+				cfg := loadConfig()
+				cfg.Pet = pets[m.petIndex].name
+				saveConfig(cfg)
+			}
 		case "esc":
 			if m.typing {
 				m.typing = false
+				m.addingSubtask = false
 				m.textInput.Blur()
 			}
 		}
@@ -287,6 +432,28 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
+	// === PETS ANIMADOS 16-BIT ===
+	if len(pets) > 0 {
+		currentPet := pets[m.petIndex]
+		frame := currentPet.frames[m.frameIndex]
+
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#EE6FF8")).Render("❮ "+currentPet.name+" ❯") + "\n")
+
+		// Prepara a animação e o espaçamento para o walk-cycle
+		petStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(currentPet.color)).Bold(true)
+		lines := strings.Split(frame.art, "\n")
+		pos := m.position
+		if pos < 0 {
+			pos = 0
+		}
+		padding := strings.Repeat(" ", pos)
+
+		for _, l := range lines {
+			b.WriteString(padding + petStyle.Render(l) + "\n")
+		}
+	}
+
 	// Floor bar retro style
 	floorChar := "▃"
 	floorWidth := m.width - 4
@@ -300,7 +467,7 @@ func (m model) View() string {
 	if m.typing {
 		b.WriteString(helpStyle.Render("enter: confirmar • esc: cancelar"))
 	} else {
-		b.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: nova • s: sub-tarefa • d: apagar\nq: sair"))
+		b.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: nova • s: sub-tarefa • d: apagar\n←/→: trocar pet • q: sair"))
 	}
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())

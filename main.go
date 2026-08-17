@@ -153,6 +153,7 @@ type model struct {
 	typing        bool
 	addingSubtask bool
 	width         int
+	height        int
 }
 
 type tickMsg time.Time
@@ -190,6 +191,7 @@ func initialModel() model {
 		typing:        false,
 		addingSubtask: false,
 		width:         60, // Fallback width
+		height:        24, // Fallback height
 	}
 }
 
@@ -204,8 +206,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
+		m.height = msg.Height
 		if m.width < 40 {
 			m.width = 40
+		}
+		maxPos := m.width - 15
+		if maxPos < 0 {
+			maxPos = 0
+		}
+		if m.position > maxPos {
+			m.position = maxPos
 		}
 	case tickMsg:
 		// Anima os frames do pet
@@ -381,14 +391,14 @@ var (
 )
 
 func (m model) View() string {
-	var b strings.Builder
+	var top strings.Builder
 
-	b.WriteString(titleStyle.Render(" ✓ TUI Todo ") + "\n")
+	top.WriteString(titleStyle.Render(" ✓ TUI Todo ") + "\n")
 
 	vis := getVisible(m.todos)
 
 	if len(vis) == 0 {
-		b.WriteString(itemStyle.Render("Nenhuma tarefa! Aproveite o dia.") + "\n\n")
+		top.WriteString(itemStyle.Render("Nenhuma tarefa! Aproveite o dia.") + "\n")
 	}
 
 	for i, v := range vis {
@@ -413,32 +423,31 @@ func (m model) View() string {
 
 		if m.cursor == i && !m.typing {
 			if todo.Done {
-				b.WriteString(selectedDoneItemStyle.Render(line) + "\n")
+				top.WriteString(selectedDoneItemStyle.Render(line) + "\n")
 			} else {
-				b.WriteString(selectedItemStyle.Render(line) + "\n")
+				top.WriteString(selectedItemStyle.Render(line) + "\n")
 			}
 		} else {
 			if todo.Done {
-				b.WriteString(doneItemStyle.Render(line) + "\n")
+				top.WriteString(doneItemStyle.Render(line) + "\n")
 			} else {
-				b.WriteString(itemStyle.Render(line) + "\n")
+				top.WriteString(itemStyle.Render(line) + "\n")
 			}
 		}
 	}
 
 	if m.typing {
-		b.WriteString("\n" + m.textInput.View() + "\n")
-	} else {
-		b.WriteString("\n")
+		top.WriteString("\n" + m.textInput.View() + "\n")
 	}
+
+	var bottom strings.Builder
 
 	// === PETS ANIMADOS 16-BIT ===
 	if len(pets) > 0 {
 		currentPet := pets[m.petIndex]
 		frame := currentPet.frames[m.frameIndex]
 
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#EE6FF8")).Render("❮ "+currentPet.name+" ❯") + "\n")
+		bottom.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#EE6FF8")).Render("❮ "+currentPet.name+" ❯") + "\n")
 
 		// Prepara a animação e o espaçamento para o walk-cycle
 		petStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(currentPet.color)).Bold(true)
@@ -450,7 +459,7 @@ func (m model) View() string {
 		padding := strings.Repeat(" ", pos)
 
 		for _, l := range lines {
-			b.WriteString(padding + petStyle.Render(l) + "\n")
+			bottom.WriteString(padding + petStyle.Render(l) + "\n")
 		}
 	}
 
@@ -461,16 +470,28 @@ func (m model) View() string {
 		floorWidth = 40
 	}
 	floorBar := lipgloss.NewStyle().Foreground(lipgloss.Color("#4A90E2")).Render(strings.Repeat(floorChar, floorWidth))
-	b.WriteString(floorBar + "\n")
+	bottom.WriteString(floorBar + "\n")
 
 	// Help
 	if m.typing {
-		b.WriteString(helpStyle.Render("enter: confirmar • esc: cancelar"))
+		bottom.WriteString(helpStyle.Render("enter: confirmar • esc: cancelar"))
 	} else {
-		b.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: nova • s: sub-tarefa • d: apagar\n←/→: trocar pet • q: sair"))
+		bottom.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: nova • s: sub-tarefa • d: apagar\n←/→: trocar pet • q: sair"))
 	}
 
-	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
+	topStr := top.String()
+	bottomStr := bottom.String()
+
+	topHeight := lipgloss.Height(topStr)
+	bottomHeight := lipgloss.Height(bottomStr)
+	availableHeight := m.height - 2 // 2 accounts for top and bottom padding of 1
+	gap := availableHeight - topHeight - bottomHeight
+	if gap < 1 {
+		gap = 1
+	}
+
+	content := topStr + strings.Repeat("\n", gap) + bottomStr
+	return lipgloss.NewStyle().Padding(1, 2).Render(content)
 }
 
 func main() {

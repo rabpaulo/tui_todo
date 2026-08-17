@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,66 +11,43 @@ import (
 )
 
 type Todo struct {
-	text string
-	done bool
+	text     string
+	done     bool
+	subtasks []*Todo
 }
 
-type Frame struct {
-	art string
+type VisibleTodo struct {
+	todo          *Todo
+	indent        int
+	parent        *Todo
+	indexInParent int
 }
 
-type Pet struct {
-	name   string
-	frames []Frame
-	color  string
-}
-
-// Estilo 8-bit (Pixel Art com Blocos do Terminal)
-var pets = []Pet{
-	{
-		name: "Cachorro",
-		color: "#E8A317", // Laranja/Dourado
-		frames: []Frame{
-			{art: "  ▄▀▀▀▄  \n ▄█ ▄ █▄ \n ▀█▄▄▄█▀ \n  ▀   ▀  "},
-			{art: "  ▄▀▀▀▄  \n ▄█ ▄ █▄ \n ▀█▄▄▄█▀ \n  ▄   ▄  "},
-		},
-	},
-	{
-		name: "Gato",
-		color: "#00FFFF", // Ciano
-		frames: []Frame{
-			{art: " █▀▀▀▀▀█ \n █ ▄ ▄ █ \n ▀▄▄▄▄▄▀ \n  ▀   ▀  "},
-			{art: " █▀▀▀▀▀█ \n █ ▀ ▀ █ \n ▀▄▄▄▄▄▀ \n  ▄   ▄  "},
-		},
-	},
-	{
-		name: "Panda",
-		color: "#FFFFFF", // Branco
-		frames: []Frame{
-			{art: " ▄▀▀▀▀▀▄ \n █ █ █ █ \n ▀▄▄▄▄▄▀ \n  ▀   ▀  "},
-			{art: " ▄▀▀▀▀▀▄ \n █ █ █ █ \n ▀▄▄▄▄▄▀ \n  ▄   ▄  "},
-		},
-	},
+func getVisible(todos []*Todo) []VisibleTodo {
+	var flat []VisibleTodo
+	var walk func([]*Todo, int, *Todo)
+	walk = func(t []*Todo, indent int, parent *Todo) {
+		for i, item := range t {
+			flat = append(flat, VisibleTodo{
+				todo:          item,
+				indent:        indent,
+				parent:        parent,
+				indexInParent: i,
+			})
+			walk(item.subtasks, indent+1, item)
+		}
+	}
+	walk(todos, 0, nil)
+	return flat
 }
 
 type model struct {
-	todos      []Todo
-	cursor     int
-	petIndex   int
-	frameIndex int
-	position   int
-	direction  int
-	textInput  textinput.Model
-	typing     bool
-	width      int
-}
-
-type tickMsg time.Time
-
-func tick() tea.Cmd {
-	return tea.Tick(time.Millisecond*250, func(t time.Time) tea.Msg {
-		return tickMsg(t)
-	})
+	todos         []*Todo
+	cursor        int
+	textInput     textinput.Model
+	typing        bool
+	addingSubtask bool
+	width         int
 }
 
 func initialModel() model {
@@ -82,23 +58,28 @@ func initialModel() model {
 	ti.Width = 40
 
 	return model{
-		todos: []Todo{
+		todos: []*Todo{
 			{text: "Ver os pets andando na barra", done: true},
+			{
+				text: "Limpar casa",
+				done: false,
+				subtasks: []*Todo{
+					{text: "Limpar quarto", done: false},
+					{text: "Limpar cozinha", done: false},
+				},
+			},
 			{text: "Adicionar mais tarefas", done: false},
 		},
-		cursor:     0,
-		petIndex:   0,
-		frameIndex: 0,
-		position:   0,
-		direction:  1,
-		textInput:  ti,
-		typing:     false,
-		width:      60, // Fallback width
+		cursor:        0,
+		textInput:     ti,
+		typing:        false,
+		addingSubtask: false,
+		width:         60, // Fallback width
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, tick())
+	return textinput.Blink
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -111,22 +92,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.width < 40 {
 			m.width = 40
 		}
-	case tickMsg:
-		// Anima os frames do pet
-		m.frameIndex = (m.frameIndex + 1) % len(pets[m.petIndex].frames)
-		
-		// Move o pet ao longo da tela
-		m.position += m.direction * 2
-		
-		// Bate nas bordas e vira
-		if m.position >= m.width-15 { // Limite direito
-			m.direction = -1
-		} else if m.position <= 0 { // Limite esquerdo
-			m.direction = 1
-		}
-
-		cmds = append(cmds, tick())
-
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -140,50 +105,65 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if !m.typing && m.cursor < len(m.todos)-1 {
+			vis := getVisible(m.todos)
+			if !m.typing && m.cursor < len(vis)-1 {
 				m.cursor++
 			}
 		case "enter":
 			if m.typing {
 				if m.textInput.Value() != "" {
-					m.todos = append(m.todos, Todo{text: m.textInput.Value(), done: false})
+					vis := getVisible(m.todos)
+					if m.addingSubtask && len(vis) > 0 && m.cursor < len(vis) {
+						parentTodo := vis[m.cursor].todo
+						parentTodo.subtasks = append(parentTodo.subtasks, &Todo{text: m.textInput.Value(), done: false})
+					} else {
+						m.todos = append(m.todos, &Todo{text: m.textInput.Value(), done: false})
+					}
 					m.textInput.SetValue("")
 				}
 				m.typing = false
+				m.addingSubtask = false
 				m.textInput.Blur()
 			} else {
-				if len(m.todos) > 0 {
-					m.todos[m.cursor].done = !m.todos[m.cursor].done
+				vis := getVisible(m.todos)
+				if len(vis) > 0 {
+					vis[m.cursor].todo.done = !vis[m.cursor].todo.done
 				}
 			}
 		case "a":
 			if !m.typing {
 				m.typing = true
+				m.addingSubtask = false
+				m.textInput.Placeholder = "Digite a nova tarefa..."
+				m.textInput.Focus()
+				cmds = append(cmds, textinput.Blink)
+			}
+		case "s":
+			if !m.typing && len(getVisible(m.todos)) > 0 {
+				m.typing = true
+				m.addingSubtask = true
+				m.textInput.Placeholder = "Digite a nova sub-tarefa..."
 				m.textInput.Focus()
 				cmds = append(cmds, textinput.Blink)
 			}
 		case "d":
-			if !m.typing && len(m.todos) > 0 {
-				m.todos = append(m.todos[:m.cursor], m.todos[m.cursor+1:]...)
-				if m.cursor >= len(m.todos) && m.cursor > 0 {
-					m.cursor--
-				}
-			}
-		case "left", "h":
 			if !m.typing {
-				m.petIndex--
-				if m.petIndex < 0 {
-					m.petIndex = len(pets) - 1
+				vis := getVisible(m.todos)
+				if len(vis) > 0 {
+					v := vis[m.cursor]
+					if v.parent == nil {
+						m.todos = append(m.todos[:v.indexInParent], m.todos[v.indexInParent+1:]...)
+					} else {
+						v.parent.subtasks = append(v.parent.subtasks[:v.indexInParent], v.parent.subtasks[v.indexInParent+1:]...)
+					}
+					newVis := getVisible(m.todos)
+					if m.cursor >= len(newVis) && m.cursor > 0 {
+						m.cursor = len(newVis) - 1
+					}
+					if m.cursor < 0 {
+						m.cursor = 0
+					}
 				}
-				m.frameIndex = 0
-			}
-		case "right", "l":
-			if !m.typing {
-				m.petIndex++
-				if m.petIndex >= len(pets) {
-					m.petIndex = 0
-				}
-				m.frameIndex = 0
 			}
 		case "esc":
 			if m.typing {
@@ -203,35 +183,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 var (
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FAFAFA")).
-		Background(lipgloss.Color("#7D56F4")).
-		Padding(0, 1).
-		MarginBottom(1)
+			Bold(true).
+			Foreground(lipgloss.Color("#FAFAFA")).
+			Background(lipgloss.Color("#7D56F4")).
+			Padding(0, 1).
+			MarginBottom(1)
 
 	itemStyle = lipgloss.NewStyle().
-		PaddingLeft(2).
-		Foreground(lipgloss.Color("#FAFAFA"))
+			PaddingLeft(2).
+			Foreground(lipgloss.Color("#FAFAFA"))
 
 	selectedItemStyle = lipgloss.NewStyle().
-		PaddingLeft(2).
-		Foreground(lipgloss.Color("#EE6FF8")).
-		Bold(true)
+				PaddingLeft(2).
+				Foreground(lipgloss.Color("#EE6FF8")).
+				Bold(true)
 
 	doneItemStyle = lipgloss.NewStyle().
-		PaddingLeft(2).
-		Foreground(lipgloss.Color("#626262")).
-		Strikethrough(true)
+			PaddingLeft(2).
+			Foreground(lipgloss.Color("#626262")).
+			Strikethrough(true)
 
 	selectedDoneItemStyle = lipgloss.NewStyle().
-		PaddingLeft(2).
-		Foreground(lipgloss.Color("#A550A8")).
-		Strikethrough(true).
-		Bold(true)
+				PaddingLeft(2).
+				Foreground(lipgloss.Color("#A550A8")).
+				Strikethrough(true).
+				Bold(true)
 
 	helpStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#626262")).
-		MarginTop(1)
+			Foreground(lipgloss.Color("#626262")).
+			MarginTop(1)
 )
 
 func (m model) View() string {
@@ -239,11 +219,14 @@ func (m model) View() string {
 
 	b.WriteString(titleStyle.Render(" ✓ TUI Todo ") + "\n")
 
-	if len(m.todos) == 0 {
+	vis := getVisible(m.todos)
+
+	if len(vis) == 0 {
 		b.WriteString(itemStyle.Render("Nenhuma tarefa! Aproveite o dia.") + "\n\n")
 	}
 
-	for i, todo := range m.todos {
+	for i, v := range vis {
+		todo := v.todo
 		cursor := " "
 		if m.cursor == i && !m.typing {
 			cursor = ">"
@@ -254,8 +237,14 @@ func (m model) View() string {
 			checked = "x"
 		}
 
-		line := fmt.Sprintf("%s [%s] %s", cursor, checked, todo.text)
-		
+		indentStr := strings.Repeat("  ", v.indent)
+		prefix := ""
+		if v.indent > 0 {
+			prefix = "└─ "
+		}
+
+		line := fmt.Sprintf("%s %s%s[%s] %s", cursor, indentStr, prefix, checked, todo.text)
+
 		if m.cursor == i && !m.typing {
 			if todo.done {
 				b.WriteString(selectedDoneItemStyle.Render(line) + "\n")
@@ -277,22 +266,6 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
-	// === PETS ANIMADOS 16-BIT ===
-	currentPet := pets[m.petIndex]
-	frame := currentPet.frames[m.frameIndex]
-	
-	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#EE6FF8")).Render("❮ " + currentPet.name + " ❯") + "\n")
-
-	// Prepara a animação e o espaçamento para o walk-cycle
-	petStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(currentPet.color)).Bold(true)
-	lines := strings.Split(frame.art, "\n")
-	padding := strings.Repeat(" ", m.position)
-	
-	for _, l := range lines {
-		b.WriteString(padding + petStyle.Render(l) + "\n")
-	}
-
 	// Floor bar retro style
 	floorChar := "▃"
 	floorWidth := m.width - 4
@@ -306,7 +279,7 @@ func (m model) View() string {
 	if m.typing {
 		b.WriteString(helpStyle.Render("enter: confirmar • esc: cancelar"))
 	} else {
-		b.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: adicionar • d: apagar\n←/→: trocar pet • q: sair"))
+		b.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: nova • s: sub-tarefa • d: apagar\nq: sair"))
 	}
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())

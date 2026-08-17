@@ -28,11 +28,11 @@ type Pet struct {
 	color  string
 }
 
-// Estilo 8-bit (Pixel Art com Blocos do Terminal)
+// 8-bit Style (Pixel Art with Terminal Blocks)
 var pets = []Pet{
 	{
 		name:  "Panda",
-		color: "#FFFFFF", // Branco
+		color: "#FFFFFF", // White
 		frames: []Frame{
 			{art: " ▄▀▀▀▀▀▄ \n █ █ █ █ \n ▀▄▄▄▄▄▀ \n  ▀   ▀  "},
 			{art: " ▄▀▀▀▀▀▄ \n █ █ █ █ \n ▀▄▄▄▄▄▀ \n  ▄   ▄  "},
@@ -77,16 +77,16 @@ func loadTodos() []*Todo {
 	b, err := os.ReadFile("todos.json")
 	if err != nil {
 		return []*Todo{
-			{Text: "Ver os pets andando na barra", Done: true},
+			{Text: "Watch the pets walking on the bar", Done: true},
 			{
-				Text: "Limpar casa",
+				Text: "Clean house",
 				Done: false,
 				Subtasks: []*Todo{
-					{Text: "Limpar quarto", Done: false},
-					{Text: "Limpar cozinha", Done: false},
+					{Text: "Clean bedroom", Done: false},
+					{Text: "Clean kitchen", Done: false},
 				},
 			},
-			{Text: "Adicionar mais tarefas", Done: false},
+			{Text: "Add more tasks", Done: false},
 		}
 	}
 	var todos []*Todo
@@ -150,7 +150,7 @@ func tick() tea.Cmd {
 
 func initialModel() model {
 	ti := textinput.New()
-	ti.Placeholder = "Digite a nova tarefa..."
+	ti.Placeholder = "Type the new task..."
 	ti.Focus()
 	ti.CharLimit = 156
 	ti.Width = 40
@@ -202,12 +202,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.position = maxPos
 		}
 	case tickMsg:
-		// Anima os frames do pet
+		// Animate the pet frames
 		if len(pets) > 0 && len(pets[m.petIndex].frames) > 0 {
 			m.frameIndex = (m.frameIndex + 1) % len(pets[m.petIndex].frames)
 		}
 
-		// Move o pet ao longo da tela
+		// Move the pet along the screen
 		m.position += m.direction * 2
 
 		maxPos := m.width - 15
@@ -215,11 +215,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			maxPos = 0
 		}
 
-		// Bate nas bordas e vira
-		if m.position >= maxPos { // Limite direito
+		// Hit the edges and turn around
+		if m.position >= maxPos { // Right limit
 			m.position = maxPos
 			m.direction = -1
-		} else if m.position <= 0 { // Limite esquerdo
+		} else if m.position <= 0 { // Left limit
 			m.position = 0
 			m.direction = 1
 		}
@@ -270,7 +270,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.typing {
 				m.typing = true
 				m.addingSubtask = false
-				m.textInput.Placeholder = "Digite a nova tarefa..."
+				m.textInput.Placeholder = "Type the new task..."
 				m.textInput.Focus()
 				cmds = append(cmds, textinput.Blink)
 			}
@@ -278,7 +278,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.typing && len(getVisible(m.todos)) > 0 {
 				m.typing = true
 				m.addingSubtask = true
-				m.textInput.Placeholder = "Digite a nova sub-tarefa..."
+				m.textInput.Placeholder = "Type the new sub-task..."
 				m.textInput.Focus()
 				cmds = append(cmds, textinput.Blink)
 			}
@@ -360,7 +360,7 @@ func (m model) View() string {
 	vis := getVisible(m.todos)
 
 	if len(vis) == 0 {
-		top.WriteString(itemStyle.Render("Nenhuma tarefa! Aproveite o dia.") + "\n")
+		top.WriteString(itemStyle.Render("No tasks! Enjoy your day.") + "\n")
 	}
 
 	for i, v := range vis {
@@ -434,9 +434,9 @@ func (m model) View() string {
 
 	// Help
 	if m.typing {
-		bottom.WriteString(helpStyle.Render("enter: confirmar • esc: cancelar"))
+		bottom.WriteString(helpStyle.Render("enter: confirm • esc: cancel"))
 	} else {
-		bottom.WriteString(helpStyle.Render("↑/↓: mover • enter: concluir • a: nova • s: sub-tarefa • d: apagar\nq: sair"))
+		bottom.WriteString(helpStyle.Render("↑/↓: move • enter: mark done • a: new • s: sub-task • d: delete\nq: quit"))
 	}
 
 	topStr := top.String()
@@ -457,7 +457,7 @@ func (m model) View() string {
 func main() {
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Erro: %v", err)
+		fmt.Printf("Error: %v", err)
 		os.Exit(1)
 	}
 }

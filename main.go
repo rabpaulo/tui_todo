@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -11,9 +12,37 @@ import (
 )
 
 type Todo struct {
-	text     string
-	done     bool
-	subtasks []*Todo
+	Text     string  `json:"text"`
+	Done     bool    `json:"done"`
+	Subtasks []*Todo `json:"subtasks"`
+}
+
+func loadTodos() []*Todo {
+	b, err := os.ReadFile("todos.json")
+	if err != nil {
+		return []*Todo{
+			{Text: "Ver os pets andando na barra", Done: true},
+			{
+				Text: "Limpar casa",
+				Done: false,
+				Subtasks: []*Todo{
+					{Text: "Limpar quarto", Done: false},
+					{Text: "Limpar cozinha", Done: false},
+				},
+			},
+			{Text: "Adicionar mais tarefas", Done: false},
+		}
+	}
+	var todos []*Todo
+	if err := json.Unmarshal(b, &todos); err != nil {
+		return []*Todo{}
+	}
+	return todos
+}
+
+func saveTodos(todos []*Todo) {
+	b, _ := json.MarshalIndent(todos, "", "  ")
+	os.WriteFile("todos.json", b, 0644)
 }
 
 type VisibleTodo struct {
@@ -34,7 +63,7 @@ func getVisible(todos []*Todo) []VisibleTodo {
 				parent:        parent,
 				indexInParent: i,
 			})
-			walk(item.subtasks, indent+1, item)
+			walk(item.Subtasks, indent+1, item)
 		}
 	}
 	walk(todos, 0, nil)
@@ -58,18 +87,7 @@ func initialModel() model {
 	ti.Width = 40
 
 	return model{
-		todos: []*Todo{
-			{text: "Ver os pets andando na barra", done: true},
-			{
-				text: "Limpar casa",
-				done: false,
-				subtasks: []*Todo{
-					{text: "Limpar quarto", done: false},
-					{text: "Limpar cozinha", done: false},
-				},
-			},
-			{text: "Adicionar mais tarefas", done: false},
-		},
+		todos:         loadTodos(),
 		cursor:        0,
 		textInput:     ti,
 		typing:        false,
@@ -115,11 +133,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					vis := getVisible(m.todos)
 					if m.addingSubtask && len(vis) > 0 && m.cursor < len(vis) {
 						parentTodo := vis[m.cursor].todo
-						parentTodo.subtasks = append(parentTodo.subtasks, &Todo{text: m.textInput.Value(), done: false})
+						parentTodo.Subtasks = append(parentTodo.Subtasks, &Todo{Text: m.textInput.Value(), Done: false})
 					} else {
-						m.todos = append(m.todos, &Todo{text: m.textInput.Value(), done: false})
+						m.todos = append(m.todos, &Todo{Text: m.textInput.Value(), Done: false})
 					}
 					m.textInput.SetValue("")
+					saveTodos(m.todos)
 				}
 				m.typing = false
 				m.addingSubtask = false
@@ -127,7 +146,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				vis := getVisible(m.todos)
 				if len(vis) > 0 {
-					vis[m.cursor].todo.done = !vis[m.cursor].todo.done
+					vis[m.cursor].todo.Done = !vis[m.cursor].todo.Done
+					saveTodos(m.todos)
 				}
 			}
 		case "a":
@@ -154,7 +174,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if v.parent == nil {
 						m.todos = append(m.todos[:v.indexInParent], m.todos[v.indexInParent+1:]...)
 					} else {
-						v.parent.subtasks = append(v.parent.subtasks[:v.indexInParent], v.parent.subtasks[v.indexInParent+1:]...)
+						v.parent.Subtasks = append(v.parent.Subtasks[:v.indexInParent], v.parent.Subtasks[v.indexInParent+1:]...)
 					}
 					newVis := getVisible(m.todos)
 					if m.cursor >= len(newVis) && m.cursor > 0 {
@@ -163,6 +183,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.cursor < 0 {
 						m.cursor = 0
 					}
+					saveTodos(m.todos)
 				}
 			}
 		case "esc":
@@ -233,7 +254,7 @@ func (m model) View() string {
 		}
 
 		checked := " "
-		if todo.done {
+		if todo.Done {
 			checked = "x"
 		}
 
@@ -243,16 +264,16 @@ func (m model) View() string {
 			prefix = "└─ "
 		}
 
-		line := fmt.Sprintf("%s %s%s[%s] %s", cursor, indentStr, prefix, checked, todo.text)
+		line := fmt.Sprintf("%s %s%s[%s] %s", cursor, indentStr, prefix, checked, todo.Text)
 
 		if m.cursor == i && !m.typing {
-			if todo.done {
+			if todo.Done {
 				b.WriteString(selectedDoneItemStyle.Render(line) + "\n")
 			} else {
 				b.WriteString(selectedItemStyle.Render(line) + "\n")
 			}
 		} else {
-			if todo.done {
+			if todo.Done {
 				b.WriteString(doneItemStyle.Render(line) + "\n")
 			} else {
 				b.WriteString(itemStyle.Render(line) + "\n")

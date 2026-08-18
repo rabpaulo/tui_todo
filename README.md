@@ -5,6 +5,7 @@ A beautiful, retro-styled Terminal User Interface (TUI) Todo List application bu
 ## Features
 
 - **Hierarchical Tasks**: Organize your tasks with sub-tasks.
+- **Task Weight/Priority**: Assign weight from 1 to 3 to prioritize tasks.
 - **Animated 8-Bit Panda**: Cute pixel art companion walking above the bottom floor bar.
 - **Interactive UI**: Navigate easily with keyboard shortcuts.
 - **Beautiful Styling**: Custom colors and text formatting using Lipgloss.
@@ -64,6 +65,8 @@ The application is fully controllable via the keyboard:
 | `a` | Add a new task |
 | `s` | Add a new sub-task to the currently selected task |
 | `d` | Delete the currently selected task or sub-task |
+| `+` or `=` | Increase task weight (1-3) |
+| `-` | Decrease task weight (1-3) |
 | `esc` | Cancel typing |
 | `q` | Quit the application (when not typing) |
 | `ctrl+c` | Force quit |

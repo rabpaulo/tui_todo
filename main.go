@@ -15,6 +15,7 @@ import (
 type Todo struct {
 	Text     string  `json:"text"`
 	Done     bool    `json:"done"`
+	Weight   int     `json:"weight"`
 	Subtasks []*Todo `json:"subtasks"`
 }
 
@@ -73,26 +74,41 @@ func saveConfig(cfg Config) {
 	}
 }
 
+func normalizeTodos(todos []*Todo) {
+	for _, t := range todos {
+		if t.Weight < 1 {
+			t.Weight = 1
+		} else if t.Weight > 3 {
+			t.Weight = 3
+		}
+		if len(t.Subtasks) > 0 {
+			normalizeTodos(t.Subtasks)
+		}
+	}
+}
+
 func loadTodos() []*Todo {
 	b, err := os.ReadFile("todos.json")
 	if err != nil {
 		return []*Todo{
-			{Text: "Watch the pets walking on the bar", Done: true},
+			{Text: "Watch the pets walking on the bar", Done: true, Weight: 1},
 			{
 				Text: "Clean house",
 				Done: false,
+				Weight: 2,
 				Subtasks: []*Todo{
-					{Text: "Clean bedroom", Done: false},
-					{Text: "Clean kitchen", Done: false},
+					{Text: "Clean bedroom", Done: false, Weight: 1},
+					{Text: "Clean kitchen", Done: false, Weight: 1},
 				},
 			},
-			{Text: "Add more tasks", Done: false},
+			{Text: "Add more tasks", Done: false, Weight: 1},
 		}
 	}
 	var todos []*Todo
 	if err := json.Unmarshal(b, &todos); err != nil {
 		return []*Todo{}
 	}
+	normalizeTodos(todos)
 	return todos
 }
 
@@ -249,9 +265,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					vis := getVisible(m.todos)
 					if m.addingSubtask && len(vis) > 0 && m.cursor < len(vis) {
 						parentTodo := vis[m.cursor].todo
-						parentTodo.Subtasks = append(parentTodo.Subtasks, &Todo{Text: m.textInput.Value(), Done: false})
+						parentTodo.Subtasks = append(parentTodo.Subtasks, &Todo{Text: m.textInput.Value(), Done: false, Weight: 1})
 					} else {
-						m.todos = append(m.todos, &Todo{Text: m.textInput.Value(), Done: false})
+						m.todos = append(m.todos, &Todo{Text: m.textInput.Value(), Done: false, Weight: 1})
 					}
 					m.textInput.SetValue("")
 					saveTodos(m.todos)
@@ -264,6 +280,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(vis) > 0 {
 					vis[m.cursor].todo.Done = !vis[m.cursor].todo.Done
 					saveTodos(m.todos)
+				}
+			}
+		case "=", "+":
+			if !m.typing {
+				vis := getVisible(m.todos)
+				if len(vis) > 0 && m.cursor < len(vis) {
+					if vis[m.cursor].todo.Weight < 3 {
+						vis[m.cursor].todo.Weight++
+						saveTodos(m.todos)
+					}
+				}
+			}
+		case "-", "_":
+			if !m.typing {
+				vis := getVisible(m.todos)
+				if len(vis) > 0 && m.cursor < len(vis) {
+					if vis[m.cursor].todo.Weight > 1 {
+						vis[m.cursor].todo.Weight--
+						saveTodos(m.todos)
+					}
 				}
 			}
 		case "a":
@@ -381,7 +417,7 @@ func (m model) View() string {
 			prefix = "└─ "
 		}
 
-		line := fmt.Sprintf("%s %s%s[%s] %s", cursor, indentStr, prefix, checked, todo.Text)
+		line := fmt.Sprintf("%s %s%s[%s] [w:%d] %s", cursor, indentStr, prefix, checked, todo.Weight, todo.Text)
 
 		if m.cursor == i && !m.typing {
 			if todo.Done {
@@ -436,7 +472,7 @@ func (m model) View() string {
 	if m.typing {
 		bottom.WriteString(helpStyle.Render("enter: confirm • esc: cancel"))
 	} else {
-		bottom.WriteString(helpStyle.Render("↑/↓: move • enter: mark done • a: new • s: sub-task • d: delete\nq: quit"))
+		bottom.WriteString(helpStyle.Render("↑/↓: move • enter: mark done • a: new • s: sub-task • d: delete\n=/-: weight • q: quit"))
 	}
 
 	topStr := top.String()

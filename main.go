@@ -46,10 +46,13 @@ type Config struct {
 	KeyBinds string `json:"key_binds"`
 	Pet      string `json:"pet"`
 	Theme    string `json:"theme"`
+	ShowPet  *bool  `json:"show_pet,omitempty"`
 }
 
+var configFilePath = "config.json"
+
 func loadConfig() Config {
-	b, err := os.ReadFile("config.json")
+	b, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return Config{
 			KeyBinds: "normal",
@@ -71,7 +74,7 @@ func loadConfig() Config {
 func saveConfig(cfg Config) {
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err == nil {
-		os.WriteFile("config.json", b, 0644)
+		os.WriteFile(configFilePath, b, 0644)
 	}
 }
 
@@ -166,6 +169,7 @@ type model struct {
 	frameIndex    int
 	position      int
 	direction     int
+	showPet       bool
 	textInput     textinput.Model
 	typing        bool
 	addingSubtask bool
@@ -190,11 +194,22 @@ func initialModel() model {
 
 	cfg := loadConfig()
 	petIdx := 0
+	petFound := false
 	for i, p := range pets {
 		if strings.EqualFold(p.name, cfg.Pet) {
 			petIdx = i
+			petFound = true
 			break
 		}
+	}
+
+	showPet := true
+	if cfg.ShowPet != nil {
+		showPet = *cfg.ShowPet
+	} else if strings.EqualFold(cfg.Pet, "none") || strings.EqualFold(cfg.Pet, "off") || strings.EqualFold(cfg.Pet, "false") || cfg.Pet == "" {
+		showPet = false
+	} else if !petFound && cfg.Pet != "" {
+		showPet = false
 	}
 
 	return model{
@@ -204,6 +219,7 @@ func initialModel() model {
 		frameIndex:    0,
 		position:      0,
 		direction:     1,
+		showPet:       showPet,
 		textInput:     ti,
 		typing:        false,
 		addingSubtask: false,
@@ -377,6 +393,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					saveTodos(m.todos)
 				}
+			}
+		case "p", "P":
+			if !m.typing {
+				m.showPet = !m.showPet
+				cfg := loadConfig()
+				cfg.ShowPet = &m.showPet
+				saveConfig(cfg)
 			}
 		case "esc":
 			if m.typing {
@@ -653,7 +676,7 @@ func (m model) View() string {
 
 	var bottom strings.Builder
 
-	showPet := ch >= 14 && cw >= 15 && len(pets) > 0
+	showPet := m.showPet && ch >= 14 && cw >= 15 && len(pets) > 0
 	if showPet {
 		currentPet := pets[m.petIndex]
 		frame := currentPet.frames[m.frameIndex]
@@ -691,7 +714,7 @@ func (m model) View() string {
 	if m.typing {
 		bottom.WriteString(helpStyle.Render("enter: confirm • esc: cancel"))
 	} else {
-		bottom.WriteString(helpStyle.Render("↑/↓: move • enter: mark done • a: new • s: sub-task • d: delete\n=/-: weight • q: quit"))
+		bottom.WriteString(helpStyle.Render("↑/↓: move • enter: mark done • a: new • s: sub-task • d: delete\n=/-: weight • p: toggle pet • q: quit"))
 	}
 
 	titleHeight := lipgloss.Height(top.String())

@@ -1,5 +1,6 @@
 {
   "key_binds": "normal",
   "pet": "Panda",
-  "theme": "dark"
+  "theme": "dark",
+  "show_pet": true
 }

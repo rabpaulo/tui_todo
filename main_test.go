@@ -393,4 +393,113 @@ func TestReorderingOnWeightChangeAndCursorTracking(t *testing.T) {
 	}
 }
 
+func TestTogglePetWithKey(t *testing.T) {
+	origConfigPath := configFilePath
+	tempConfig := t.TempDir() + "/config.json"
+	configFilePath = tempConfig
+	defer func() { configFilePath = origConfigPath }()
+
+	origTodosPath := todosFilePath
+	todosFilePath = t.TempDir() + "/todos.json"
+	defer func() { todosFilePath = origTodosPath }()
+
+	m := initialModel()
+	m.width = 60
+	m.height = 20
+	m.todos = []*Todo{{Text: "Task 1", Weight: 1}}
+
+	if !m.showPet {
+		t.Fatalf("expected pet to be visible by default")
+	}
+	if !strings.Contains(m.View(), "▄▀▀▀▀▀▄") {
+		t.Fatalf("expected pet art in View when showPet is true")
+	}
+
+	// Press 'p' -> toggle pet off
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = updatedModel.(model)
+
+	if m.showPet {
+		t.Errorf("expected showPet to be false after pressing 'p'")
+	}
+	if strings.Contains(m.View(), "▄▀▀▀▀▀▄") {
+		t.Errorf("expected pet art to NOT be present when showPet is false")
+	}
+
+	// Press 'p' again -> toggle pet back on
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = updatedModel.(model)
+
+	if !m.showPet {
+		t.Errorf("expected showPet to be true after pressing 'p' again")
+	}
+	if !strings.Contains(m.View(), "▄▀▀▀▀▀▄") {
+		t.Errorf("expected pet art to be present when showPet is toggled back on")
+	}
+
+	// In typing mode, pressing 'p' should not toggle pet
+	m.typing = true
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = updatedModel.(model)
+	if !m.showPet {
+		t.Errorf("expected showPet to remain true when typing 'p'")
+	}
+}
+
+func TestPetConfigOption(t *testing.T) {
+	origConfigPath := configFilePath
+	tempDir := t.TempDir()
+	configFilePath = tempDir + "/config.json"
+	defer func() { configFilePath = origConfigPath }()
+
+	origTodosPath := todosFilePath
+	todosFilePath = tempDir + "/todos.json"
+	defer func() { todosFilePath = origTodosPath }()
+
+	// Test 1: Config with show_pet: false
+	cfgJSON := `{"pet": "Panda", "show_pet": false}`
+	if err := os.WriteFile(configFilePath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	m := initialModel()
+	if m.showPet {
+		t.Errorf("expected initialModel showPet to be false with show_pet: false in config")
+	}
+
+	// Test 2: Config with pet: "none"
+	cfgJSON = `{"pet": "none"}`
+	if err := os.WriteFile(configFilePath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	m = initialModel()
+	if m.showPet {
+		t.Errorf("expected initialModel showPet to be false with pet: 'none' in config")
+	}
+
+	// Test 3: Config with pet: "off"
+	cfgJSON = `{"pet": "off"}`
+	if err := os.WriteFile(configFilePath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	m = initialModel()
+	if m.showPet {
+		t.Errorf("expected initialModel showPet to be false with pet: 'off' in config")
+	}
+
+	// Test 4: Config with show_pet: true
+	cfgJSON = `{"pet": "Panda", "show_pet": true}`
+	if err := os.WriteFile(configFilePath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	m = initialModel()
+	if !m.showPet {
+		t.Errorf("expected initialModel showPet to be true with show_pet: true in config")
+	}
+}
+
+
 

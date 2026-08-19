@@ -402,16 +402,16 @@ func (m model) renderTodoList(contentWidth int, maxLines int) string {
 		cursor = 0
 	}
 
-	itemStyle := lipgloss.NewStyle().
+	containerStyle := lipgloss.NewStyle().
 		PaddingLeft(2).
-		Foreground(lipgloss.Color("#FAFAFA")).
 		Width(contentWidth)
 
-	selectedItemStyle := lipgloss.NewStyle().
-		PaddingLeft(2).
+	baseItemStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FAFAFA"))
+
+	baseSelectedItemStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#EE6FF8")).
-		Bold(true).
-		Width(contentWidth)
+		Bold(true)
 
 	doneItemStyle := lipgloss.NewStyle().
 		PaddingLeft(2).
@@ -425,6 +425,14 @@ func (m model) renderTodoList(contentWidth int, maxLines int) string {
 		Strikethrough(true).
 		Bold(true).
 		Width(contentWidth)
+
+	weight1Style := lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
+	weight2Style := lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B"))
+	weight3Style := lipgloss.NewStyle().Foreground(lipgloss.Color("#E06C75"))
+
+	weight1StyleSelected := lipgloss.NewStyle().Foreground(lipgloss.Color("#7D8590")).Bold(true)
+	weight2StyleSelected := lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B")).Bold(true)
+	weight3StyleSelected := lipgloss.NewStyle().Foreground(lipgloss.Color("#E06C75")).Bold(true)
 
 	scrollIndicatorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#7D56F4")).
@@ -453,21 +461,52 @@ func (m model) renderTodoList(contentWidth int, maxLines int) string {
 			prefix = "└─ "
 		}
 
-		line := fmt.Sprintf("%s %s%s[%s] [w:%d] %s", cur, indentStr, prefix, checked, todo.Weight, todo.Text)
+		var weightRaw string
+		switch todo.Weight {
+		case 2:
+			weightRaw = "!! "
+		case 3:
+			weightRaw = "!!!"
+		default:
+			weightRaw = "!  "
+		}
 
 		var rendered string
-		if cursor == i && !m.typing {
-			if todo.Done {
+		if todo.Done {
+			line := fmt.Sprintf("%s %s%s[%s] %s %s", cur, indentStr, prefix, checked, weightRaw, todo.Text)
+			if cursor == i && !m.typing {
 				rendered = selectedDoneItemStyle.Render(line)
 			} else {
-				rendered = selectedItemStyle.Render(line)
-			}
-		} else {
-			if todo.Done {
 				rendered = doneItemStyle.Render(line)
-			} else {
-				rendered = itemStyle.Render(line)
 			}
+		} else if cursor == i && !m.typing {
+			var weightStyled string
+			switch todo.Weight {
+			case 2:
+				weightStyled = weight2StyleSelected.Render(weightRaw)
+			case 3:
+				weightStyled = weight3StyleSelected.Render(weightRaw)
+			default:
+				weightStyled = weight1StyleSelected.Render(weightRaw)
+			}
+			prefixPart := baseSelectedItemStyle.Render(fmt.Sprintf("%s %s%s[%s] ", cur, indentStr, prefix, checked))
+			textPart := baseSelectedItemStyle.Render(todo.Text)
+			line := prefixPart + weightStyled + " " + textPart
+			rendered = containerStyle.Render(line)
+		} else {
+			var weightStyled string
+			switch todo.Weight {
+			case 2:
+				weightStyled = weight2Style.Render(weightRaw)
+			case 3:
+				weightStyled = weight3Style.Render(weightRaw)
+			default:
+				weightStyled = weight1Style.Render(weightRaw)
+			}
+			prefixPart := baseItemStyle.Render(fmt.Sprintf("%s %s%s[%s] ", cur, indentStr, prefix, checked))
+			textPart := baseItemStyle.Render(todo.Text)
+			line := prefixPart + weightStyled + " " + textPart
+			rendered = containerStyle.Render(line)
 		}
 
 		renderedItems[i] = rendered

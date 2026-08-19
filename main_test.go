@@ -114,13 +114,27 @@ func TestTodoJSONSerialization(t *testing.T) {
 func TestViewContainsWeight(t *testing.T) {
 	m := initialModel()
 	m.todos = []*Todo{
+		{Text: "Low priority task", Weight: 1},
+		{Text: "Medium priority task", Weight: 2},
 		{Text: "High priority task", Weight: 3},
 	}
 	m.cursor = 0
 	view := m.View()
 
-	if !strings.Contains(view, "[w:3]") {
-		t.Errorf("expected view to contain '[w:3]', got:\n%s", view)
+	// Ensure explicit debug text is not present
+	if strings.Contains(view, "[w:") {
+		t.Errorf("expected view not to contain explicit '[w:', got:\n%s", view)
+	}
+
+	// Ensure subtle priority indicators are rendered
+	if !strings.Contains(view, "!!!") {
+		t.Errorf("expected view to contain '!!!' for weight 3, got:\n%s", view)
+	}
+	if !strings.Contains(view, "!! ") {
+		t.Errorf("expected view to contain '!! ' for weight 2, got:\n%s", view)
+	}
+	if !strings.Contains(view, "!  ") {
+		t.Errorf("expected view to contain '!  ' for weight 1, got:\n%s", view)
 	}
 }
 

@@ -119,3 +119,116 @@ func TestViewContainsWeight(t *testing.T) {
 		t.Errorf("expected view to contain '[w:3]', got:\n%s", view)
 	}
 }
+
+func TestTerminalResizeWindowSizeMsg(t *testing.T) {
+	m := initialModel()
+
+	// Resize to wide terminal
+	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updatedModel.(model)
+
+	if m.width != 120 || m.height != 40 {
+		t.Errorf("expected dimensions 120x40, got %dx%d", m.width, m.height)
+	}
+	if m.contentWidth() != 116 {
+		t.Errorf("expected contentWidth 116, got %d", m.contentWidth())
+	}
+	if m.textInput.Width != 112 {
+		t.Errorf("expected textInput width 112, got %d", m.textInput.Width)
+	}
+
+	// Resize to narrow terminal
+	updatedModel, _ = m.Update(tea.WindowSizeMsg{Width: 28, Height: 10})
+	m = updatedModel.(model)
+
+	if m.width != 28 || m.height != 10 {
+		t.Errorf("expected dimensions 28x10, got %dx%d", m.width, m.height)
+	}
+	if m.contentWidth() != 28 {
+		t.Errorf("expected contentWidth 28, got %d", m.contentWidth())
+	}
+	if m.textInput.Width != 24 {
+		t.Errorf("expected textInput width 24, got %d", m.textInput.Width)
+	}
+}
+
+func TestResponsiveTextWrapping(t *testing.T) {
+	m := initialModel()
+	longText := "This is an extremely long todo item description that should be wrapped properly according to the terminal width without causing overflow errors"
+	m.todos = []*Todo{
+		{Text: longText, Weight: 1},
+	}
+	m.cursor = 0
+
+	// Test with narrow terminal width
+	m.width = 40
+	m.height = 24
+	view := m.View()
+
+	if !strings.Contains(view, "This is an extremely") {
+		t.Errorf("expected view to contain start of long text, got:\n%s", view)
+	}
+}
+
+func TestListScrollingOnSmallTerminal(t *testing.T) {
+	m := initialModel()
+	m.todos = []*Todo{
+		{Text: "Task 0", Weight: 1},
+		{Text: "Task 1", Weight: 1},
+		{Text: "Task 2", Weight: 1},
+		{Text: "Task 3", Weight: 1},
+		{Text: "Task 4", Weight: 1},
+		{Text: "Task 5", Weight: 1},
+		{Text: "Task 6", Weight: 1},
+		{Text: "Task 7", Weight: 1},
+	}
+	m.width = 60
+	m.height = 14 // Constrained height
+
+	// Cursor at top
+	m.cursor = 0
+	view := m.View()
+	if !strings.Contains(view, "Task 0") {
+		t.Errorf("expected view with cursor=0 to contain Task 0, got:\n%s", view)
+	}
+	if !strings.Contains(view, "below") {
+		t.Errorf("expected view with cursor=0 to indicate more tasks below, got:\n%s", view)
+	}
+
+	// Move cursor to bottom
+	m.cursor = 7
+	view = m.View()
+	if !strings.Contains(view, "Task 7") {
+		t.Errorf("expected view with cursor=7 to contain Task 7, got:\n%s", view)
+	}
+	if !strings.Contains(view, "above") {
+		t.Errorf("expected view with cursor=7 to indicate more tasks above, got:\n%s", view)
+	}
+}
+
+func TestPetVisibilityOnTerminalResize(t *testing.T) {
+	m := initialModel()
+	m.todos = []*Todo{
+		{Text: "Task 1", Weight: 1},
+	}
+
+	// Height >= 14: Pet should be visible
+	m.width = 60
+	m.height = 20
+	view := m.View()
+	if !strings.Contains(view, "▄▀▀▀▀▀▄") {
+		t.Errorf("expected pet art to be rendered when height=20, got:\n%s", view)
+	}
+
+	// Height < 14: Pet should be hidden to conserve space for tasks
+	m.height = 10
+	view = m.View()
+	if strings.Contains(view, "▄▀▀▀▀▀▄") {
+		t.Errorf("expected pet art to be hidden when height=10, got:\n%s", view)
+	}
+	// Tasks and help must still be visible
+	if !strings.Contains(view, "Task 1") {
+		t.Errorf("expected task to be visible even with height=10, got:\n%s", view)
+	}
+}
+

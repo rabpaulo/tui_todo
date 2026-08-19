@@ -207,10 +207,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		if m.width < 40 {
-			m.width = 40
+		cw := m.contentWidth()
+		m.textInput.Width = cw - 4
+		if m.textInput.Width < 10 {
+			m.textInput.Width = 10
 		}
-		maxPos := m.width - 15
+		maxPos := cw - 11
 		if maxPos < 0 {
 			maxPos = 0
 		}
@@ -226,7 +228,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Move the pet along the screen
 		m.position += m.direction * 2
 
-		maxPos := m.width - 15
+		cw := m.contentWidth()
+		maxPos := cw - 11
 		if maxPos < 0 {
 			maxPos = 0
 		}
@@ -355,55 +358,86 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Background(lipgloss.Color("#7D56F4")).
-			Padding(0, 1).
-			MarginBottom(1)
-
-	itemStyle = lipgloss.NewStyle().
-			PaddingLeft(2).
-			Foreground(lipgloss.Color("#FAFAFA"))
-
-	selectedItemStyle = lipgloss.NewStyle().
-				PaddingLeft(2).
-				Foreground(lipgloss.Color("#EE6FF8")).
-				Bold(true)
-
-	doneItemStyle = lipgloss.NewStyle().
-			PaddingLeft(2).
-			Foreground(lipgloss.Color("#626262")).
-			Strikethrough(true)
-
-	selectedDoneItemStyle = lipgloss.NewStyle().
-				PaddingLeft(2).
-				Foreground(lipgloss.Color("#A550A8")).
-				Strikethrough(true).
-				Bold(true)
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262")).
-			MarginTop(1)
-)
-
-func (m model) View() string {
-	var top strings.Builder
-
-	top.WriteString(titleStyle.Render(" ✓ TUI Todo ") + "\n")
-
-	vis := getVisible(m.todos)
-
-	if len(vis) == 0 {
-		top.WriteString(itemStyle.Render("No tasks! Enjoy your day.") + "\n")
+func (m model) contentWidth() int {
+	paddingX := 2
+	if m.width < 30 {
+		paddingX = 0
 	}
+	cw := m.width - (paddingX * 2)
+	if cw < 10 {
+		cw = 10
+	}
+	return cw
+}
+
+func (m model) contentHeight() int {
+	paddingY := 1
+	if m.height < 10 {
+		paddingY = 0
+	}
+	ch := m.height - (paddingY * 2)
+	if ch < 1 {
+		ch = 1
+	}
+	return ch
+}
+
+func (m model) renderTodoList(contentWidth int, maxLines int) string {
+	vis := getVisible(m.todos)
+	if len(vis) == 0 {
+		return lipgloss.NewStyle().
+			PaddingLeft(2).
+			Foreground(lipgloss.Color("#FAFAFA")).
+			Width(contentWidth).
+			Render("No tasks! Enjoy your day.") + "\n"
+	}
+
+	cursor := m.cursor
+	if cursor >= len(vis) {
+		cursor = len(vis) - 1
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+
+	itemStyle := lipgloss.NewStyle().
+		PaddingLeft(2).
+		Foreground(lipgloss.Color("#FAFAFA")).
+		Width(contentWidth)
+
+	selectedItemStyle := lipgloss.NewStyle().
+		PaddingLeft(2).
+		Foreground(lipgloss.Color("#EE6FF8")).
+		Bold(true).
+		Width(contentWidth)
+
+	doneItemStyle := lipgloss.NewStyle().
+		PaddingLeft(2).
+		Foreground(lipgloss.Color("#626262")).
+		Strikethrough(true).
+		Width(contentWidth)
+
+	selectedDoneItemStyle := lipgloss.NewStyle().
+		PaddingLeft(2).
+		Foreground(lipgloss.Color("#A550A8")).
+		Strikethrough(true).
+		Bold(true).
+		Width(contentWidth)
+
+	scrollIndicatorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#7D56F4")).
+		Italic(true).
+		PaddingLeft(2)
+
+	renderedItems := make([]string, len(vis))
+	itemHeights := make([]int, len(vis))
+	totalHeightAll := 0
 
 	for i, v := range vis {
 		todo := v.todo
-		cursor := " "
-		if m.cursor == i && !m.typing {
-			cursor = ">"
+		cur := " "
+		if cursor == i && !m.typing {
+			cur = ">"
 		}
 
 		checked := " "
@@ -417,38 +451,147 @@ func (m model) View() string {
 			prefix = "└─ "
 		}
 
-		line := fmt.Sprintf("%s %s%s[%s] [w:%d] %s", cursor, indentStr, prefix, checked, todo.Weight, todo.Text)
+		line := fmt.Sprintf("%s %s%s[%s] [w:%d] %s", cur, indentStr, prefix, checked, todo.Weight, todo.Text)
 
-		if m.cursor == i && !m.typing {
+		var rendered string
+		if cursor == i && !m.typing {
 			if todo.Done {
-				top.WriteString(selectedDoneItemStyle.Render(line) + "\n")
+				rendered = selectedDoneItemStyle.Render(line)
 			} else {
-				top.WriteString(selectedItemStyle.Render(line) + "\n")
+				rendered = selectedItemStyle.Render(line)
 			}
 		} else {
 			if todo.Done {
-				top.WriteString(doneItemStyle.Render(line) + "\n")
+				rendered = doneItemStyle.Render(line)
 			} else {
-				top.WriteString(itemStyle.Render(line) + "\n")
+				rendered = itemStyle.Render(line)
 			}
+		}
+
+		renderedItems[i] = rendered
+		itemHeights[i] = lipgloss.Height(rendered)
+		totalHeightAll += itemHeights[i]
+	}
+
+	if totalHeightAll <= maxLines {
+		var b strings.Builder
+		for _, item := range renderedItems {
+			b.WriteString(item + "\n")
+		}
+		return b.String()
+	}
+
+	startIdx := cursor
+	endIdx := cursor
+	usedHeight := itemHeights[cursor]
+
+	for {
+		canExpandUp := startIdx > 0
+		canExpandDown := endIdx < len(vis)-1
+
+		if !canExpandUp && !canExpandDown {
+			break
+		}
+
+		expanded := false
+
+		if canExpandDown {
+			needed := itemHeights[endIdx+1]
+			extraIndicators := 0
+			if startIdx > 0 {
+				extraIndicators++
+			}
+			if endIdx+1 < len(vis)-1 {
+				extraIndicators++
+			}
+			if usedHeight+needed+extraIndicators <= maxLines {
+				endIdx++
+				usedHeight += needed
+				expanded = true
+			}
+		}
+
+		if canExpandUp {
+			needed := itemHeights[startIdx-1]
+			extraIndicators := 0
+			if startIdx-1 > 0 {
+				extraIndicators++
+			}
+			if endIdx < len(vis)-1 {
+				extraIndicators++
+			}
+			if usedHeight+needed+extraIndicators <= maxLines {
+				startIdx--
+				usedHeight += needed
+				expanded = true
+			}
+		}
+
+		if !expanded {
+			break
 		}
 	}
 
+	var b strings.Builder
+	if startIdx > 0 {
+		b.WriteString(scrollIndicatorStyle.Render(fmt.Sprintf("▲ %d more above...", startIdx)) + "\n")
+	}
+	for i := startIdx; i <= endIdx; i++ {
+		b.WriteString(renderedItems[i] + "\n")
+	}
+	if endIdx < len(vis)-1 {
+		b.WriteString(scrollIndicatorStyle.Render(fmt.Sprintf("▼ %d more below...", len(vis)-1-endIdx)) + "\n")
+	}
+
+	return b.String()
+}
+
+func (m model) View() string {
+	cw := m.contentWidth()
+	ch := m.contentHeight()
+
+	paddingX := 2
+	if m.width < 30 {
+		paddingX = 0
+	}
+	paddingY := 1
+	if m.height < 10 {
+		paddingY = 0
+	}
+
+	var top strings.Builder
+
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FAFAFA")).
+		Background(lipgloss.Color("#7D56F4")).
+		Padding(0, 1).
+		MarginBottom(1)
+
+	top.WriteString(titleStyle.Render(" ✓ TUI Todo ") + "\n")
+
+	var inputStr string
 	if m.typing {
-		top.WriteString("\n" + m.textInput.View() + "\n")
+		inputStr = "\n" + m.textInput.View() + "\n"
 	}
 
 	var bottom strings.Builder
 
-	// === PETS ANIMADOS 16-BIT ===
-	if len(pets) > 0 {
+	showPet := ch >= 14 && cw >= 15 && len(pets) > 0
+	if showPet {
 		currentPet := pets[m.petIndex]
 		frame := currentPet.frames[m.frameIndex]
 
-		// Prepara a animação e o espaçamento para o walk-cycle
 		petStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(currentPet.color)).Bold(true)
 		lines := strings.Split(frame.art, "\n")
 		pos := m.position
+		maxPos := cw - 11
+		if maxPos < 0 {
+			maxPos = 0
+		}
+		if pos > maxPos {
+			pos = maxPos
+		}
 		if pos < 0 {
 			pos = 0
 		}
@@ -459,35 +602,55 @@ func (m model) View() string {
 		}
 	}
 
-	// Floor bar retro style
 	floorChar := "▃"
-	floorWidth := m.width - 4
-	if floorWidth < 10 {
-		floorWidth = 40
-	}
+	floorWidth := cw
 	floorBar := lipgloss.NewStyle().Foreground(lipgloss.Color("#4A90E2")).Render(strings.Repeat(floorChar, floorWidth))
 	bottom.WriteString(floorBar + "\n")
 
-	// Help
+	helpStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#626262")).
+		MarginTop(1).
+		Width(cw)
+
 	if m.typing {
 		bottom.WriteString(helpStyle.Render("enter: confirm • esc: cancel"))
 	} else {
 		bottom.WriteString(helpStyle.Render("↑/↓: move • enter: mark done • a: new • s: sub-task • d: delete\n=/-: weight • q: quit"))
 	}
 
+	titleHeight := lipgloss.Height(top.String())
+	inputHeight := lipgloss.Height(inputStr)
+	bottomHeight := lipgloss.Height(bottom.String())
+
+	minGap := 1
+	maxTodoHeight := ch - titleHeight - inputHeight - bottomHeight - minGap
+	if maxTodoHeight < 1 {
+		maxTodoHeight = 1
+	}
+
+	todoStr := m.renderTodoList(cw, maxTodoHeight)
+	top.WriteString(todoStr)
+	if inputStr != "" {
+		top.WriteString(inputStr)
+	}
+
 	topStr := top.String()
 	bottomStr := bottom.String()
 
 	topHeight := lipgloss.Height(topStr)
-	bottomHeight := lipgloss.Height(bottomStr)
-	availableHeight := m.height - 2 // 2 accounts for top and bottom padding of 1
-	gap := availableHeight - topHeight - bottomHeight
-	if gap < 1 {
-		gap = 1
+	gap := ch - topHeight - bottomHeight
+	if gap < 0 {
+		gap = 0
 	}
 
-	content := topStr + strings.Repeat("\n", gap) + bottomStr
-	return lipgloss.NewStyle().Padding(1, 2).Render(content)
+	var content string
+	if gap > 0 {
+		content = topStr + strings.Repeat("\n", gap) + bottomStr
+	} else {
+		content = topStr + "\n" + bottomStr
+	}
+
+	return lipgloss.NewStyle().Padding(paddingY, paddingX).Render(content)
 }
 
 func main() {

@@ -2,6 +2,8 @@
 
 A beautiful, retro-styled Terminal User Interface (TUI) Todo List application built in Go using the [Bubble Tea](https://github.com/charmbracelet/bubbletea) framework.
 
+![TUI Todo Demo](todo.gif)
+
 ## Features
 
 - **Hierarchical Tasks**: Organize your tasks with sub-tasks.

@@ -42,6 +42,10 @@ func TestNormalizeTodos(t *testing.T) {
 }
 
 func TestWeightIncrementDecrement(t *testing.T) {
+	origPath := todosFilePath
+	todosFilePath = t.TempDir() + "/todos.json"
+	defer func() { todosFilePath = origPath }()
+
 	m := initialModel()
 	m.todos = []*Todo{
 		{Text: "Task 1", Weight: 2},

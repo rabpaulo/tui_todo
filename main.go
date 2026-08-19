@@ -87,8 +87,10 @@ func normalizeTodos(todos []*Todo) {
 	}
 }
 
+var todosFilePath = "todos.json"
+
 func loadTodos() []*Todo {
-	b, err := os.ReadFile("todos.json")
+	b, err := os.ReadFile(todosFilePath)
 	if err != nil {
 		return []*Todo{
 			{Text: "Watch the pets walking on the bar", Done: true, Weight: 1},
@@ -114,7 +116,7 @@ func loadTodos() []*Todo {
 
 func saveTodos(todos []*Todo) {
 	b, _ := json.MarshalIndent(todos, "", "  ")
-	os.WriteFile("todos.json", b, 0644)
+	os.WriteFile(todosFilePath, b, 0644)
 }
 
 type VisibleTodo struct {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -87,12 +88,23 @@ func normalizeTodos(todos []*Todo) {
 	}
 }
 
+func sortTodos(todos []*Todo) {
+	sort.SliceStable(todos, func(i, j int) bool {
+		return todos[i].Weight > todos[j].Weight
+	})
+	for _, t := range todos {
+		if len(t.Subtasks) > 0 {
+			sortTodos(t.Subtasks)
+		}
+	}
+}
+
 var todosFilePath = "todos.json"
 
 func loadTodos() []*Todo {
 	b, err := os.ReadFile(todosFilePath)
 	if err != nil {
-		return []*Todo{
+		todos := []*Todo{
 			{Text: "Watch the pets walking on the bar", Done: true, Weight: 1},
 			{
 				Text: "Clean house",
@@ -105,12 +117,15 @@ func loadTodos() []*Todo {
 			},
 			{Text: "Add more tasks", Done: false, Weight: 1},
 		}
+		sortTodos(todos)
+		return todos
 	}
 	var todos []*Todo
 	if err := json.Unmarshal(b, &todos); err != nil {
 		return []*Todo{}
 	}
 	normalizeTodos(todos)
+	sortTodos(todos)
 	return todos
 }
 
@@ -271,8 +286,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.addingSubtask && len(vis) > 0 && m.cursor < len(vis) {
 						parentTodo := vis[m.cursor].todo
 						parentTodo.Subtasks = append(parentTodo.Subtasks, &Todo{Text: m.textInput.Value(), Done: false, Weight: 1})
+						sortTodos(parentTodo.Subtasks)
 					} else {
 						m.todos = append(m.todos, &Todo{Text: m.textInput.Value(), Done: false, Weight: 1})
+						sortTodos(m.todos)
 					}
 					m.textInput.SetValue("")
 					saveTodos(m.todos)
@@ -291,9 +308,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.typing {
 				vis := getVisible(m.todos)
 				if len(vis) > 0 && m.cursor < len(vis) {
-					if vis[m.cursor].todo.Weight < 3 {
-						vis[m.cursor].todo.Weight++
+					target := vis[m.cursor].todo
+					if target.Weight < 3 {
+						target.Weight++
+						sortTodos(m.todos)
 						saveTodos(m.todos)
+						newVis := getVisible(m.todos)
+						for idx, item := range newVis {
+							if item.todo == target {
+								m.cursor = idx
+								break
+							}
+						}
 					}
 				}
 			}
@@ -301,9 +327,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.typing {
 				vis := getVisible(m.todos)
 				if len(vis) > 0 && m.cursor < len(vis) {
-					if vis[m.cursor].todo.Weight > 1 {
-						vis[m.cursor].todo.Weight--
+					target := vis[m.cursor].todo
+					if target.Weight > 1 {
+						target.Weight--
+						sortTodos(m.todos)
 						saveTodos(m.todos)
+						newVis := getVisible(m.todos)
+						for idx, item := range newVis {
+							if item.todo == target {
+								m.cursor = idx
+								break
+							}
+						}
 					}
 				}
 			}

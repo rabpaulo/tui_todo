@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -249,4 +250,147 @@ func TestPetVisibilityOnTerminalResize(t *testing.T) {
 		t.Errorf("expected task to be visible even with height=10, got:\n%s", view)
 	}
 }
+
+func TestSortTodos(t *testing.T) {
+	todos := []*Todo{
+		{Text: "Low 1", Weight: 1},
+		{Text: "High 1", Weight: 3},
+		{
+			Text:   "Medium 1",
+			Weight: 2,
+			Subtasks: []*Todo{
+				{Text: "Sub Low", Weight: 1},
+				{Text: "Sub High", Weight: 3},
+				{Text: "Sub Medium", Weight: 2},
+			},
+		},
+		{Text: "High 2", Weight: 3},
+		{Text: "Low 2", Weight: 1},
+	}
+
+	sortTodos(todos)
+
+	// Top level checks: High 1 (3), High 2 (3), Medium 1 (2), Low 1 (1), Low 2 (1)
+	expectedOrder := []struct {
+		text   string
+		weight int
+	}{
+		{"High 1", 3},
+		{"High 2", 3},
+		{"Medium 1", 2},
+		{"Low 1", 1},
+		{"Low 2", 1},
+	}
+
+	for i, exp := range expectedOrder {
+		if todos[i].Text != exp.text || todos[i].Weight != exp.weight {
+			t.Errorf("todos[%d] = {%s, %d}, expected {%s, %d}", i, todos[i].Text, todos[i].Weight, exp.text, exp.weight)
+		}
+	}
+
+	// Subtasks under Medium 1: Sub High (3), Sub Medium (2), Sub Low (1)
+	mediumTodo := todos[2]
+	expectedSubtasks := []struct {
+		text   string
+		weight int
+	}{
+		{"Sub High", 3},
+		{"Sub Medium", 2},
+		{"Sub Low", 1},
+	}
+
+	for i, exp := range expectedSubtasks {
+		if mediumTodo.Subtasks[i].Text != exp.text || mediumTodo.Subtasks[i].Weight != exp.weight {
+			t.Errorf("mediumTodo.Subtasks[%d] = {%s, %d}, expected {%s, %d}", i, mediumTodo.Subtasks[i].Text, mediumTodo.Subtasks[i].Weight, exp.text, exp.weight)
+		}
+	}
+}
+
+func TestLoadTodosSorting(t *testing.T) {
+	origPath := todosFilePath
+	tempFile := t.TempDir() + "/todos.json"
+	todosFilePath = tempFile
+	defer func() { todosFilePath = origPath }()
+
+	content := `[
+		{"text": "Task A", "done": false, "weight": 1},
+		{"text": "Task B", "done": false, "weight": 3},
+		{"text": "Task C", "done": false, "weight": 2}
+	]`
+	if err := os.WriteFile(tempFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write temp todos file: %v", err)
+	}
+
+	loaded := loadTodos()
+	if len(loaded) != 3 {
+		t.Fatalf("expected 3 todos, got %d", len(loaded))
+	}
+	if loaded[0].Text != "Task B" || loaded[0].Weight != 3 {
+		t.Errorf("expected loaded[0] to be Task B (weight 3), got %s (%d)", loaded[0].Text, loaded[0].Weight)
+	}
+	if loaded[1].Text != "Task C" || loaded[1].Weight != 2 {
+		t.Errorf("expected loaded[1] to be Task C (weight 2), got %s (%d)", loaded[1].Text, loaded[1].Weight)
+	}
+	if loaded[2].Text != "Task A" || loaded[2].Weight != 1 {
+		t.Errorf("expected loaded[2] to be Task A (weight 1), got %s (%d)", loaded[2].Text, loaded[2].Weight)
+	}
+}
+
+func TestReorderingOnWeightChangeAndCursorTracking(t *testing.T) {
+	origPath := todosFilePath
+	todosFilePath = t.TempDir() + "/todos.json"
+	defer func() { todosFilePath = origPath }()
+
+	m := initialModel()
+	m.todos = []*Todo{
+		{Text: "Task 1 (W3)", Weight: 3},
+		{Text: "Task 2 (W2)", Weight: 2},
+		{Text: "Task 3 (W1)", Weight: 1},
+	}
+	m.cursor = 2 // on Task 3 (W1)
+	m.typing = false
+
+	// Increment weight of Task 3 from 1 to 2 -> should move to index 1 or 2 depending on stable sort (after W2), cursor should track it
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	m = updatedModel.(model)
+
+	if m.todos[m.cursor].Text != "Task 3 (W1)" {
+		t.Errorf("expected cursor to track 'Task 3 (W1)', got cursor on '%s'", m.todos[m.cursor].Text)
+	}
+	if m.todos[m.cursor].Weight != 2 {
+		t.Errorf("expected weight 2, got %d", m.todos[m.cursor].Weight)
+	}
+
+	// Increment weight of Task 3 from 2 to 3 -> should move above Task 2 (W2), cursor should track it
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	m = updatedModel.(model)
+
+	if m.todos[m.cursor].Text != "Task 3 (W1)" {
+		t.Errorf("expected cursor to track 'Task 3 (W1)', got cursor on '%s'", m.todos[m.cursor].Text)
+	}
+	if m.todos[m.cursor].Weight != 3 {
+		t.Errorf("expected weight 3, got %d", m.todos[m.cursor].Weight)
+	}
+	// It should now be one of the top weight 3 items (index 1)
+	if m.cursor != 1 {
+		t.Errorf("expected cursor at index 1, got %d", m.cursor)
+	}
+
+	// Decrement weight of Task 3 from 3 to 1 with '-' twice
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}})
+	m = updatedModel.(model)
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}})
+	m = updatedModel.(model)
+
+	if m.todos[m.cursor].Text != "Task 3 (W1)" {
+		t.Errorf("expected cursor to track 'Task 3 (W1)', got cursor on '%s'", m.todos[m.cursor].Text)
+	}
+	if m.todos[m.cursor].Weight != 1 {
+		t.Errorf("expected weight 1, got %d", m.todos[m.cursor].Weight)
+	}
+	if m.cursor != 2 {
+		t.Errorf("expected cursor at bottom index 2, got %d", m.cursor)
+	}
+}
+
 
